@@ -29,7 +29,7 @@ impl Default for BoidBehavior {
         Self {
             neighbor_radius: 250.0,
             avoidance_radius: 100.0,
-            neighbor_limit: 16,
+            neighbor_limit: 64,
             max_speed: 50.0,
             min_speed: 20.0,
             fov_deg: 360.0,
