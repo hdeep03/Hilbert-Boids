@@ -1,5 +1,6 @@
 use macroquad::prelude::{Mat2, Vec2};
 use rayon::prelude::*;
+use rand::rngs::StdRng;
 use rand::Rng;
 use rand_distr::{Distribution, Normal};
 use std::time::Instant;
@@ -11,17 +12,18 @@ use super::{BoidSim, NeighborSearch, BruteForceNeighborSearch};
 pub struct Sim {
     flock: Flock,
     neighbors: Box<dyn NeighborSearch>,
+    rng: StdRng,
 }
 
 impl Sim {
-    pub fn new(flock: Flock, neighbors: Box<dyn NeighborSearch>) -> Self {
-        Self { flock, neighbors }
+    pub fn new(flock: Flock, neighbors: Box<dyn NeighborSearch>, rng: StdRng) -> Self {
+        Self { flock, neighbors, rng }
     }
 
     #[allow(dead_code)]
     /// Convenience helper for the default brute-force neighbor search.
-    pub fn with_brute_force(flock: Flock) -> Self {
-        Self::new(flock, Box::new(BruteForceNeighborSearch))
+    pub fn with_brute_force(flock: Flock, rng: StdRng) -> Self {
+        Self::new(flock, Box::new(BruteForceNeighborSearch), rng)
     }
 
     pub fn algo_name(&self) -> &'static str {
@@ -178,13 +180,13 @@ impl BoidSim for Sim {
         let t_neighbors_end = Instant::now();
 
         // 2) integrate velocities/positions & apply extra behaviors
-        let mut rng = rand::rng();
+        let rng = &mut self.rng;
         let center = Vec2::new(bounds.w * 0.5, bounds.h * 0.5);
 
         for (idx, boid) in self.flock.boids.iter_mut().enumerate() {
             boid.vel += accels[idx] * dt;
 
-            Self::random_vel_change(boid, behavior, &mut rng);
+            Self::random_vel_change(boid, behavior, rng);
 
             // Gentle bias toward center, stronger near walls.
             let dist_left = boid.pos.x;

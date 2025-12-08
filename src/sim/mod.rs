@@ -24,6 +24,7 @@ mod brute_force;
 mod spatial_hashing;
 mod quadtree;
 mod hilbert;
+mod hilbert_dual;
 // pub use hilbert::HilbertSim;
 // pub use grid::GridSim;
 pub use engine::Sim;
@@ -34,3 +35,11 @@ pub use spatial_hashing::SpatialHashNeighborSearch;
 pub use hilbert::HilbertNeighborSearch;
 #[allow(unused_imports)]
 pub use quadtree::QuadTreeNeighborSearch;
+#[allow(unused_imports)]
+pub use hilbert_dual::HilbertDualNeighborSearch;
+
+#[allow(dead_code)]
+fn _noop_dual_hilbert() {
+    // Reference to avoid dead_code lint when unused.
+    let _ = hilbert_dual::HilbertDualNeighborSearch::new(8);
+}
