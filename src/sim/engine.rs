@@ -112,6 +112,7 @@ impl BoidSim for Sim {
                 let mut center = Vec2::ZERO;      // for cohesion
                 let mut avg_vel = Vec2::ZERO;     // for alignment
                 let mut separation = Vec2::ZERO;  // for separation
+                let mut separation_count = 0;
                 let mut total_weight = 0.0;       // weighted neighbor count
 
                 for j in self.neighbors.neighbors(&boids_snapshot, behavior, i) {
@@ -127,7 +128,9 @@ impl BoidSim for Sim {
 
                     if dist2 < avoid_r2 {
                         let dir_away = me.pos - other.pos;
-                        separation += dir_away;
+                        let dir_away_len = dir_away.length();
+                        separation += dir_away / dir_away_len;
+                        separation_count += 1;
                     }
 
                     let angle = me.vel.angle_between(offset);
@@ -147,6 +150,10 @@ impl BoidSim for Sim {
                     center += other.pos * w;
                     avg_vel += other.vel * w;
                     total_weight += w;
+                }
+
+                if separation_count > 0 {
+                    separation /= separation_count as f32;
                 }
 
                 let mut a = Vec2::ZERO;
@@ -204,13 +211,13 @@ impl BoidSim for Sim {
             Self::keep_within_bounds(boid, bounds, behavior);
         }
 
-        let t_neighbor_total = (t_neighbor_end - t_neighbor_start) + (t_neighbors_end - t_neighbors_start);
-        println!(
-            "neighbor search: rebuild {:?}, queries {:?}, total {:?}",
-            t_neighbor_end - t_neighbor_start,
-            t_neighbors_end - t_neighbors_start,
-            t_neighbor_total
-        );
+        let _t_neighbor_total = (t_neighbor_end - t_neighbor_start) + (t_neighbors_end - t_neighbors_start);
+        // println!(
+        //     "neighbor search: rebuild {:?}, queries {:?}, total {:?}",
+        //     t_neighbor_end - t_neighbor_start,
+        //     t_neighbors_end - t_neighbors_start,
+        //     t_neighbor_total
+        // );
     }
 
     fn boids(&self) -> &[Boid] {

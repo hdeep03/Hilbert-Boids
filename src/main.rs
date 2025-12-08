@@ -7,7 +7,7 @@ mod sim;
 
 use boid::{Boid, BoidBehavior};
 use flock::{Flock, WorldBounds};
-use sim::{BoidSim, Sim, HilbertNeighborSearch, QuadTreeNeighborSearch};
+use sim::{BoidSim, Sim, HilbertNeighborSearch};
 
 const BOID_LINE_WIDTH: f32 = 1.0;
 const MSAA_SAMPLE_COUNT: i32 = 1;
@@ -97,7 +97,7 @@ async fn main() {
         h: screen_height(),
     };
 
-    let num_boids = 4000;
+    let num_boids = 100000;
 
     // Use default boid behavior for now
     let behavior: BoidBehavior = BoidBehavior::default();
@@ -115,18 +115,18 @@ async fn main() {
         sim.step(dt);
         let end = Instant::now();
         let duration = end.duration_since(start);
-        println!("Time taken: {:?}", duration);
+        // println!("Time taken: {:?}", duration);
         clear_background(BLACK);
 
         // Draw all boids
         for b in sim.boids() {
-            draw_boid(b, 0.25);
+            draw_boid(b, 0.1);
         }
 
         // Small overlay text so you know which sim this is
         let ups = 1.0 / dt;
         draw_text(
-            format!("Sim ({}) ups: {:.2} boids: {}", sim.algo_name(), ups, num_boids).as_str(),
+            format!("Sim ({}) boids: {} engine_time: {:.2}ms", sim.algo_name(), num_boids,  (duration.as_micros() as f32)/1000.0).as_str(),
             20.0,
             40.0,
             32.0,
