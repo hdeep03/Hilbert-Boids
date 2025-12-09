@@ -1,5 +1,6 @@
 use std::env;
 use std::time::Instant;
+use std::collections::VecDeque;
 use macroquad::prelude::*;
 use ::rand::{rngs::StdRng, SeedableRng};
 
@@ -9,7 +10,10 @@ mod sim;
 
 use boid::{Boid, BoidBehavior};
 use flock::{Flock, WorldBounds};
-use sim::{BoidSim, Sim, HilbertDualNeighborSearch, QuadTreeNeighborSearch};
+use sim::{BoidSim, Sim};
+#[allow(unused_imports)]
+use sim::{HilbertRotatedNeighborSearch, QuadTreeNeighborSearch, HilbertNeighborSearch, BruteForceNeighborSearch};
+
 
 #[derive(Clone, Copy)]
 #[allow(dead_code)]
@@ -18,8 +22,7 @@ enum ColorMode {
     Velocity,
 }
 
-const BOID_LINE_WIDTH: f32 = 1.0;
-const MSAA_SAMPLE_COUNT: i32 = 1;
+const MSAA_SAMPLE_COUNT: i32 = 8;
 // Higher bits = finer Hilbert quantization (more distinct colors)
 const HILBERT_BITS: u32 = 16;
 const COLOR_MODE: ColorMode = ColorMode::Velocity;
@@ -48,7 +51,7 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> Color {
         _ => (v, p, q),
     };
 
-    Color::new(r, g, b, 1.0)
+    Color::new(r, g, b, 0.5)
 }
 
 fn rot(n: u32, x: &mut u32, y: &mut u32, rx: u32, ry: u32) {
@@ -95,7 +98,7 @@ fn hilbert_color(pos: Vec2, min: Vec2, max: Vec2, bits: u32) -> Color {
 fn heading_color(forward: Vec2) -> Color {
     let angle = forward.y.atan2(forward.x);
     let hue = (angle / std::f32::consts::TAU).rem_euclid(1.0);
-    hsv_to_rgb(hue, 0.8, 1.0)
+    hsv_to_rgb(hue, 1.0, 1.0)
 }
 
 #[allow(unused)]
@@ -125,30 +128,16 @@ fn draw_boid(boid: &Boid, scale: f32, min: Vec2, max: Vec2) {
     }
 
     let forward = vel.normalize();
-    let right = Vec2::new(forward.y, -forward.x); // perpendicular
-
-    let width = BOID_LINE_WIDTH;
-
-    // Shape parameters
-    let tip_len = 6.0 * scale;
-    let base_len = 2.5 * scale;
-    let wing = 3.0 * scale;
-
-    // Points in world space
-    let tip   = pos + forward * tip_len;
-    let left  = pos - forward * base_len - right * wing;
-    let right_p = pos - forward * base_len + right * wing;
 
     let color = match COLOR_MODE {
         ColorMode::Hilbert => hilbert_color(pos, min, max, HILBERT_BITS),
         ColorMode::Velocity => heading_color(forward),
     };
 
-    // Draw triangle / dart
-    draw_line(tip.x, tip.y, left.x, left.y, width, color);
-    draw_line(left.x, left.y, pos.x, pos.y, width, color);
-    draw_line(pos.x, pos.y, right_p.x, right_p.y, width, color);
-    draw_line(right_p.x, right_p.y, tip.x, tip.y, width, color);
+    let major = 8.0 * scale;
+    let minor = 3.0 * scale;
+    let angle = forward.y.atan2(forward.x).to_degrees();
+    draw_ellipse(pos.x, pos.y, major, minor, angle, color);
 }
 
 
@@ -160,7 +149,7 @@ async fn main() {
         h: screen_height(),
     };
 
-    let num_boids = 75000;
+    let num_boids = 50_000;
 
     let seed = rng_seed();
     println!("Using RNG seed: {}", seed);
@@ -172,9 +161,14 @@ async fn main() {
     // Create a random flock
     let flock = Flock::new_random_with_rng(num_boids, bounds, behavior, &mut rng);
 
+    // let mut sim = Sim::new(flock, Box::new(SpatialHashNeighborSearch::new(behavior.neighbor_radius)), rng);
+    // let mut sim = Sim::new(flock, Box::new(BruteForceNeighborSearch), rng);
+
     // let mut sim = Sim::new(flock, Box::new(QuadTreeNeighborSearch::new(8, 6)), rng);
-    let mut sim = Sim::new(flock, Box::new(HilbertDualNeighborSearch::new(HILBERT_BITS)), rng);
+    let mut sim = Sim::new(flock, Box::new(HilbertRotatedNeighborSearch::new(HILBERT_BITS)), rng);
     // let mut sim = Sim::new(flock, Box::new(HilbertNeighborSearch::new(HILBERT_BITS)), rng);
+
+    let mut frame_times_ms: VecDeque<f32> = VecDeque::with_capacity(100);
 
     loop {
         let dt = get_frame_time();
@@ -200,11 +194,31 @@ async fn main() {
 
         // Draw all boids
         for b in sim.boids() {
-            draw_boid(b, 0.05, min, max);
+            draw_boid(b, 0.3, min, max);
         }
 
+        let engine_ms = (duration.as_micros() as f32) / 1000.0;
+        frame_times_ms.push_back(engine_ms);
+        if frame_times_ms.len() > 100 {
+            frame_times_ms.pop_front();
+        }
+        let avg_ms: f32 = if frame_times_ms.is_empty() {
+            0.0
+        } else {
+            frame_times_ms.iter().copied().sum::<f32>() / frame_times_ms.len() as f32
+        };
+        println!("avg_ms: {}", avg_ms);
+        // print()
+
         draw_text(
-            format!("Sim ({}) boids: {} engine_time: {:.2}ms", sim.algo_name(), num_boids,  (duration.as_micros() as f32)/1000.0).as_str(),
+            format!(
+                "Sim ({}) boids: {} avg_engine(100): {:.2}ms avg_fps: {:.2}",
+                sim.algo_name(),
+                num_boids,
+                avg_ms,
+                1000.0 / avg_ms
+            )
+            .as_str(),
             20.0,
             40.0,
             32.0,

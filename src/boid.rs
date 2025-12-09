@@ -27,18 +27,18 @@ pub struct BoidBehavior {
 impl Default for BoidBehavior {
     fn default() -> Self {
         Self {
-            neighbor_radius: 150.0,
+            neighbor_radius: 250.0,
             avoidance_radius: 100.0,
-            neighbor_limit: 64,
+            neighbor_limit: 32,
             max_speed: 100.0,
             min_speed: 10.0,
             fov_deg: 360.0,
-            weight_separation: 10.0,
-            weight_alignment: 0.9,
-            weight_cohesion: 0.5,
+            weight_separation: 30.0,
+            weight_alignment: 1.0,
+            weight_cohesion: 1.8,
             edge_margin: 50.0,
             edge_turn_factor: 0.2,
-            max_rand_rotate: 0.15,
+            max_rand_rotate: 0.0,
         }
     }
 }
