@@ -169,6 +169,7 @@ async fn main() {
     // let mut sim = Sim::new(flock, Box::new(HilbertNeighborSearch::new(HILBERT_BITS)), rng);
 
     let mut frame_times_ms: VecDeque<f32> = VecDeque::with_capacity(100);
+    let mut frame_count = 0;
 
     loop {
         let dt = get_frame_time();
@@ -207,7 +208,7 @@ async fn main() {
         } else {
             frame_times_ms.iter().copied().sum::<f32>() / frame_times_ms.len() as f32
         };
-        println!("avg_ms: {}", avg_ms);
+        // println!("avg_ms: {}", avg_ms);
         // print()
 
         draw_text(
@@ -224,7 +225,10 @@ async fn main() {
             32.0,
             WHITE,
         );
-
+        frame_count += 1;
+        if(frame_count > 1000){
+            break;
+        }
         next_frame().await;
     }
 }
