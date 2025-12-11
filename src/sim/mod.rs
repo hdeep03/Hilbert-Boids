@@ -21,6 +21,7 @@ pub trait NeighborSearch: Send + Sync {
 // mod grid;
 mod engine;
 mod brute_force;
+mod utils;
 mod spatial_hashing;
 mod quadtree;
 mod hilbert;

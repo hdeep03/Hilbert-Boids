@@ -1,12 +1,10 @@
-use macroquad::prelude::{Mat2, Vec2};
+use macroquad::prelude:: Vec2;
 use rayon::prelude::*;
 use rand::rngs::StdRng;
-use rand::Rng;
-use rand_distr::{Distribution, Normal};
 use std::time::Instant;
-
-use crate::boid::{Boid, BoidBehavior};
-use crate::flock::{Flock, WorldBounds};
+use crate::boid::Boid;
+use crate::flock::Flock;
+use crate::sim::utils::{keep_within_bounds, limit_speed, random_vel_change};
 use super::{BoidSim, NeighborSearch, BruteForceNeighborSearch};
 
 pub struct Sim {
@@ -14,6 +12,11 @@ pub struct Sim {
     neighbors: Box<dyn NeighborSearch>,
     rng: StdRng,
 }
+
+// pub struct SeqSim {
+//     flock: Flock,
+//     rng: StdRng,
+// }
 
 impl Sim {
     pub fn new(flock: Flock, neighbors: Box<dyn NeighborSearch>, rng: StdRng) -> Self {
@@ -29,59 +32,13 @@ impl Sim {
     pub fn algo_name(&self) -> &'static str {
         self.neighbors.name()
     }
-
-    fn keep_within_bounds(boid: &mut Boid, bounds: &WorldBounds, behavior: &BoidBehavior) {
-        let pixel_margin = behavior.edge_margin;
-
-        if boid.pos.x < pixel_margin {
-            boid.vel = boid
-                .vel
-                .lerp(Vec2::new(behavior.min_speed, 0.0), behavior.edge_turn_factor);
-        } else if boid.pos.x > bounds.w - pixel_margin {
-            boid.vel = boid
-                .vel
-                .lerp(Vec2::new(-behavior.min_speed, 0.0), behavior.edge_turn_factor);
-        }
-
-        if boid.pos.y < pixel_margin {
-            boid.vel = boid
-                .vel
-                .lerp(Vec2::new(0.0, behavior.min_speed), behavior.edge_turn_factor);
-        } else if boid.pos.y > bounds.h - pixel_margin {
-            boid.vel = boid
-                .vel
-                .lerp(Vec2::new(0.0, -behavior.min_speed), behavior.edge_turn_factor);
-        }
-    }
-
-    fn limit_speed(boid: &mut Boid, behavior: &BoidBehavior) {
-        let speed = boid.vel.length();
-        if speed > behavior.max_speed {
-            boid.vel = boid.vel / speed * behavior.max_speed;
-        } else if speed < behavior.min_speed {
-            if speed > 1e-6 {
-                boid.vel = boid.vel / speed * behavior.min_speed;
-            } else {
-                // If totally stuck, give it a nudge
-                boid.vel = Vec2::new(behavior.min_speed, 0.0);
-            }
-        }
-    }
-
-    fn random_vel_change(boid: &mut Boid, behavior: &BoidBehavior, rng: &mut impl Rng) {
-        if behavior.max_rand_rotate <= 0.0 {
-            return;
-        }
-        let stdev = behavior.max_rand_rotate / 3.0;
-        let normal = Normal::new(0.0f32, stdev).unwrap();
-        let angle = normal.sample(rng);
-        let rot = Mat2::from_cols_array(&[
-            angle.cos(), angle.sin(),
-            -angle.sin(), angle.cos(),
-        ]);
-        boid.vel = rot * boid.vel;
-    }
 }
+
+// impl SeqSim {
+//     pub fn new(flock: Flock, rng: StdRng) -> Self {
+//         Self { flock, rng }
+//     }
+// }
 
 impl BoidSim for Sim {
     fn step(&mut self, dt: f32) {
@@ -89,7 +46,6 @@ impl BoidSim for Sim {
         if n == 0 {
             return;
         }
-
         let bounds   = &self.flock.bounds;
         let behavior = &self.flock.behavior;
 
@@ -98,25 +54,19 @@ impl BoidSim for Sim {
 
         let mut accels = vec![Vec2::ZERO; n];
         {
-            // 1) compute "rule" contributions based on previous frame state (borrow immutably; no clone)
             let boids_snapshot = &self.flock.boids;
-
-            let t_neighbor_start = Instant::now();
             self.neighbors.rebuild(boids_snapshot);
-            let t_neighbor_end = Instant::now();
-
-            let t_neighbors_start = Instant::now();
             accels
                 .par_iter_mut()
                 .enumerate()
                 .for_each(|(i, accel)| {
                     let me = boids_snapshot[i];
 
-                    let mut center = Vec2::ZERO;      // for cohesion
-                    let mut avg_vel = Vec2::ZERO;     // for alignment
-                    let mut separation = Vec2::ZERO;  // for separation
+                    let mut center = Vec2::ZERO;
+                    let mut avg_vel = Vec2::ZERO;
+                    let mut separation = Vec2::ZERO;
                     let mut separation_count = 0;
-                    let mut total_weight = 0.0;       // weighted neighbor count
+                    let mut total_weight = 0.0;
 
                     for j in self.neighbors.neighbors(boids_snapshot, behavior, i) {
                         let other = boids_snapshot[j];
@@ -141,9 +91,6 @@ impl BoidSim for Sim {
                             continue;
                         }
 
-                        // --- Distance weight for cohesion + alignment ---
-                        // dist = 0                 -> weight ~ 1
-                        // dist = neighbor_radius   -> weight ~ 0
                         let t = dist / behavior.neighbor_radius;
                         let w = if t < 1.0 { 1.0 - t } else { 0.0 };
                         if w <= 0.0 {
@@ -178,22 +125,14 @@ impl BoidSim for Sim {
 
                     *accel = a;
                 });
-            let _t_neighbors_end = Instant::now();
-
-            let _t_neighbor_total = (t_neighbor_end - t_neighbor_start) + (_t_neighbors_end - t_neighbors_start);
-            let _ = _t_neighbor_total; // silence unused
         }
 
-        // 2) integrate velocities/positions & apply extra behaviors
         let rng = &mut self.rng;
         let center = Vec2::new(bounds.w * 0.5, bounds.h * 0.5);
 
         for (idx, boid) in self.flock.boids.iter_mut().enumerate() {
             boid.vel += accels[idx] * dt;
-
-            Self::random_vel_change(boid, behavior, rng);
-
-            // Gentle bias toward center, stronger near walls.
+            random_vel_change(boid, behavior, rng);
             let dist_left = boid.pos.x;
             let dist_right = bounds.w - boid.pos.x;
             let dist_bottom = boid.pos.y;
@@ -202,20 +141,12 @@ impl BoidSim for Sim {
             let to_center = center - boid.pos;
             if to_center.length_squared() > 1e-6 {
                 let bias_dir = to_center.normalize();
-                // Stronger pull: scale harder as we approach edges.
-                // Base term (edge_margin / min_edge) plus an extra factor.
                 let bias_mag = (behavior.edge_margin / min_edge) * behavior.edge_turn_factor * 3.0;
                 boid.vel += bias_dir * bias_mag * dt;
             }
-
-            // Limit speed
-            Self::limit_speed(boid, behavior);
-
-            // Integrate position
+            limit_speed(boid, behavior);
             boid.pos += boid.vel * dt;
-
-            // Keep within bounds
-            Self::keep_within_bounds(boid, bounds, behavior);
+            keep_within_bounds(boid, bounds, behavior);
         }
 
     }
@@ -225,3 +156,18 @@ impl BoidSim for Sim {
     }
 }
 
+
+// impl BoidSim for SeqSim {
+//     fn step(&mut self, dt: f32) {
+//         let n = self.flock.boids.len();
+//         if n == 0 {
+//             return;
+//         }
+//         let bounds   = &self.flock.bounds;
+//         let behavior = &self.flock.behavior;
+//     }
+
+//     fn boids(&self) -> &[Boid] {
+//         &self.flock.boids
+//     }
+// }

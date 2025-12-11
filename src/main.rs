@@ -169,8 +169,6 @@ async fn main() {
     // let mut sim = Sim::new(flock, Box::new(HilbertNeighborSearch::new(HILBERT_BITS)), rng);
 
     let mut frame_times_ms: VecDeque<f32> = VecDeque::with_capacity(100);
-    let mut frame_count = 0;
-
     loop {
         let dt = get_frame_time();
         let start = Instant::now();
@@ -225,10 +223,7 @@ async fn main() {
             32.0,
             WHITE,
         );
-        frame_count += 1;
-        if(frame_count > 1000){
-            break;
-        }
+
         next_frame().await;
     }
 }
